@@ -100,3 +100,10 @@ Nella scheda di **qualunque** località (sia dalle guide sia aggiunta da un visi
 Le modifiche sono conservate in `public.atlas_place_metadata_edits`: una riga per località, con l'ultima modifica condivisa. I dati originali delle guide rimangono immutati nel catalogo incorporato. L'ID del luogo non cambia: preferiti, note, segnalazioni di posizione e preferenze personali restano collegati allo stesso luogo. Tutti gli utenti anonimi autenticati possono modificare gli stessi campi, senza moderazione preventiva e senza quote giornaliere applicative; prevale l'ultima modifica salvata. Non è presente una cronologia completa delle revisioni, quindi per un ripristino occorre reinserire i valori originari. Eventuali limiti infrastrutturali Supabase restano applicabili.
 
 La nuova versione del sito continua a caricare i luoghi e i preferiti esistenti anche se la migrazione SQL non e' ancora stata eseguita, ma il modulo di modifica metadati rimane disabilitato finche' la tabella non e' disponibile.
+
+
+### Modifica condivisa delle descrizioni dei luoghi aggiunti
+
+Per modificare **descrizione**, **informazioni aggiuntive** e **note sul luogo** dei luoghi aggiunti dagli utenti, eseguire in Supabase SQL Editor `community-content-setup.sql` **dopo** `community-metadata-setup.sql`. Pubblicare i file del sito aggiornati. Aprire la scheda di un luogo aggiunto dagli utenti e selezionare **Modifica dati, descrizione e note**. Le modifiche sono condivise, senza soglie giornaliere applicative.
+
+I testi originali delle guide non vengono modificati. La descrizione inizialmente inserita nel catalogo utente viene conservata; il database delle modifiche contiene un override. `NULL` significa nessun override, mentre una stringa vuota cancella la visualizzazione. I preferiti, le note personali delle schede originali e le coordinate rimangono invariati.

@@ -2,7 +2,7 @@
    Only a public Supabase publishable key and a short-lived anonymous user JWT are used. */
 'use strict';
 class AtlasCommunity {
-  constructor(cloud) { this.cloud=cloud; this.places=[]; this.corrections=[]; this.metadataEdits=[]; this.metadataAvailable=false; this.favoriteSummary=new Map(); this.favoritesAvailable=false; this.ready=false; this.error=''; this.listeners=new Set(); this.inFlight=null; }
+  constructor(cloud) { this.cloud=cloud; this.places=[]; this.corrections=[]; this.metadataEdits=[]; this.metadataAvailable=false; this.communityContentAvailable=false; this.favoriteSummary=new Map(); this.favoritesAvailable=false; this.ready=false; this.error=''; this.listeners=new Set(); this.inFlight=null; }
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   notify() { for (const fn of this.listeners) fn(this); }
   async request(table, {method='GET', query='', body=null, prefer=''}={}) {
@@ -44,7 +44,7 @@ class AtlasCommunity {
     if(this.inFlight)return this.inFlight;
     this.inFlight=(async()=>{
       try {
-        const [places,corrections,latestFavorites,latestMetadata]=await Promise.all([
+        const [places,corrections,latestFavorites,latestMetadata,latestContent]=await Promise.all([
           this.readAll('atlas_user_places'),this.readAll('atlas_place_corrections'),
           this.request('rpc/atlas_community_favorite_snapshot').then(rows=>({rows,available:true})).catch(e=>{
             // Publishing the site before the SQL migration must not hide existing community places.
@@ -56,6 +56,11 @@ class AtlasCommunity {
             if(/42P01|PGRST205|Could not find the table|schema cache/i.test(String(e.code)+' '+e.message))
               return {rows:[],available:false};
             throw e;
+          }),
+          this.request('atlas_place_metadata_edits',{query:'?select=description,information,place_notes&limit=0'}).then(()=>true).catch(e=>{
+            // Old installations keep the existing name/category editor functional.
+            if(/42703|PGRST200|PGRST204|PGRST205|42P01|column|schema cache|Could not find the table/i.test(String(e.code)+' '+e.message))return false;
+            throw e;
           })
         ]);
         const favoriteRows=latestFavorites.rows;
@@ -65,13 +70,13 @@ class AtlasCommunity {
           favorite_count:Number(row.favorite_count)||0,mine:row.mine===true
         }]));
         const changed=!this.ready||Boolean(this.error)||this.favoritesAvailable!==latestFavorites.available||
-          this.metadataAvailable!==latestMetadata.available||
+          this.metadataAvailable!==latestMetadata.available||this.communityContentAvailable!==latestContent||
           JSON.stringify(this.places)!==JSON.stringify(places)||
           JSON.stringify(this.corrections)!==JSON.stringify(corrections)||
           JSON.stringify(this.metadataEdits)!==JSON.stringify(latestMetadata.rows)||
           JSON.stringify([...this.favoriteSummary])!==JSON.stringify([...summary]);
         this.places=places;this.corrections=corrections;this.metadataEdits=latestMetadata.rows;this.favoriteSummary=summary;
-        this.favoritesAvailable=latestFavorites.available;this.metadataAvailable=latestMetadata.available;
+        this.favoritesAvailable=latestFavorites.available;this.metadataAvailable=latestMetadata.available;this.communityContentAvailable=latestContent;
         this.ready=true;this.error='';if(changed)this.notify();
       }catch(e){
         const detail=String(e.code)+' '+e.message;
@@ -84,6 +89,8 @@ class AtlasCommunity {
   }
   async editMetadata(record){
     if(!this.metadataAvailable)throw Error('Esegui community-metadata-setup.sql su Supabase per modificare nome, regione e categoria dei luoghi.');
+    if(['description','information','place_notes'].some(key=>Object.hasOwn(record,key))&&!this.communityContentAvailable)
+      throw Error('Esegui community-content-setup.sql su Supabase per modificare descrizione, informazioni e note dei luoghi aggiunti.');
     const rows=await this.request('atlas_place_metadata_edits',{
       method:'POST',query:'?on_conflict=place_id',body:record,
       prefer:'resolution=merge-duplicates,return=representation'
