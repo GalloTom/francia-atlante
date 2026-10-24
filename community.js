@@ -1,8 +1,8 @@
-/* Shared community places and coordinate reports. Requires community-setup.sql.
+/* Shared places, corrections and community favorites. Requires community-setup.sql and community-favorites-setup.sql.
    Only a public Supabase publishable key and a short-lived anonymous user JWT are used. */
 'use strict';
 class AtlasCommunity {
-  constructor(cloud) { this.cloud=cloud; this.places=[]; this.corrections=[]; this.ready=false; this.error=''; this.listeners=new Set(); this.inFlight=null; }
+  constructor(cloud) { this.cloud=cloud; this.places=[]; this.corrections=[]; this.favoriteSummary=new Map(); this.favoritesAvailable=false; this.ready=false; this.error=''; this.listeners=new Set(); this.inFlight=null; }
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   notify() { for (const fn of this.listeners) fn(this); }
   async request(table, {method='GET', query='', body=null, prefer=''}={}) {
@@ -42,15 +42,52 @@ class AtlasCommunity {
     if(this.inFlight)return this.inFlight;
     this.inFlight=(async()=>{
       try {
-        const [places,corrections]=await Promise.all([this.readAll('atlas_user_places'),this.readAll('atlas_place_corrections')]);
-        const changed=!this.ready||Boolean(this.error)||JSON.stringify(this.places)!==JSON.stringify(places)||JSON.stringify(this.corrections)!==JSON.stringify(corrections);
-        this.places=places;this.corrections=corrections;this.ready=true;this.error='';if(changed)this.notify();
-      }catch(e){this.error=/42P01|PGRST205|Could not find the table|schema cache/i.test(String(e.code)+' '+e.message)?'Esegui community-setup.sql nel progetto Supabase per abilitare le modifiche.':this.cloud.errorText(e);this.notify();throw e;}
+        const [places,corrections,latestFavorites]=await Promise.all([
+          this.readAll('atlas_user_places'),this.readAll('atlas_place_corrections'),
+          this.request('rpc/atlas_community_favorite_snapshot').then(rows=>({rows,available:true})).catch(e=>{
+            // Publishing the site before the SQL migration must not hide existing community places.
+            if(/PGRST202|atlas_community_favorite_snapshot/i.test(String(e.code)+' '+e.message))
+              return {rows:[],available:false};
+            throw e;
+          })
+        ]);
+        const favoriteRows=latestFavorites.rows;
+        if(!Array.isArray(favoriteRows))throw Error('Riepilogo dei preferiti comuni non valido.');
+        const summary=new Map(favoriteRows.map(row=>[row.place_id,{
+          favorite_count:Number(row.favorite_count)||0,mine:row.mine===true
+        }]));
+        const changed=!this.ready||Boolean(this.error)||this.favoritesAvailable!==latestFavorites.available||
+          JSON.stringify(this.places)!==JSON.stringify(places)||
+          JSON.stringify(this.corrections)!==JSON.stringify(corrections)||
+          JSON.stringify([...this.favoriteSummary])!==JSON.stringify([...summary]);
+        this.places=places;this.corrections=corrections;this.favoriteSummary=summary;
+        this.favoritesAvailable=latestFavorites.available;
+        this.ready=true;this.error='';if(changed)this.notify();
+      }catch(e){
+        const detail=String(e.code)+' '+e.message;
+        this.error=/PGRST202|atlas_community_favorite_snapshot/i.test(detail)?'Esegui community-favorites-setup.sql su Supabase per abilitare i preferiti dei nuovi luoghi.':
+          /42P01|PGRST205|Could not find the table|schema cache/i.test(detail)?'Esegui community-setup.sql nel progetto Supabase per abilitare le modifiche.':this.cloud.errorText(e);
+        this.notify();throw e;
+      }
       finally{this.inFlight=null;}
     })();return this.inFlight;
   }
   async addPlace(record){const r=await this.request('atlas_user_places',{method:'POST',body:record,prefer:'return=representation'});await this.refresh();return r?.[0];}
   async report(record){const r=await this.request('atlas_place_corrections',{method:'POST',body:record,prefer:'return=representation'});await this.refresh();return r?.[0];}
+  async favorite(uuid,value){
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid))throw Error('Identificativo del luogo non valido.');
+    if(!this.favoritesAvailable)throw Error('Esegui community-favorites-setup.sql su Supabase per attivare i preferiti dei nuovi luoghi.');
+    if(value){
+      await this.request('atlas_community_favorites',{
+        method:'POST',body:{place_id:uuid},prefer:'resolution=ignore-duplicates,missing=default,return=minimal'
+      });
+    }else{
+      await this.request('atlas_community_favorites',{
+        method:'DELETE',query:'?place_id=eq.'+encodeURIComponent(uuid)
+      });
+    }
+    await this.refresh();
+  }
   async removePlace(uuid){await this.request('atlas_user_places',{method:'DELETE',query:'?id=eq.'+encodeURIComponent(uuid)});await this.refresh();}
   async removeReport(uuid){await this.request('atlas_place_corrections',{method:'DELETE',query:'?id=eq.'+encodeURIComponent(uuid)});await this.refresh();}
   get currentUserId(){return this.cloud.readSession()?.user?.id||null;}

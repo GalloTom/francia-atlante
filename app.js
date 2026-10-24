@@ -37,21 +37,33 @@ function toast(msg){$('#toast').textContent=msg;$('#toast').hidden=false;clearTi
 const cloud = new AtlasCloud(window.ATLAS_CLOUD_CONFIG || {});
 const noteDrafts = new Map(), placeCloudCache = new Map(), pendingFavorites = new Set();
 let cloudRefreshSelected = null;
+function favoriteState(id){
+ return (BYID.get(id)?.communityPlace ? community.favoriteSummary : cloud.summary).get(id);
+}
+function rebuildFavoriteIndex(){
+ favorites=new Set([...cloud.summary.entries(),...community.favoriteSummary.entries()]
+  .filter(([,value])=>Number(value.favorite_count)>0).map(([id])=>id));
+}
 function sharedFavoriteHTML(p) {
- const own=Boolean(cloud.summary.get(p.id)?.mine), count=Number(cloud.summary.get(p.id)?.favorite_count||0);
+ const own=Boolean(favoriteState(p.id)?.mine), count=Number(favoriteState(p.id)?.favorite_count||0);
  return `<button class="fav ${own?'saved':count?'community-saved':''}" aria-label="${own?'Rimuovi il tuo preferito':'Segnala tra i preferiti condivisi'}: ${esc(p.name)}" aria-pressed="${own}" title="${count?'Presente nei preferiti condivisi. ':''}${own?'Hai segnalato questo luogo.':'Aggiungi la tua segnalazione.'}" ${pendingFavorites.has(p.id)?'disabled':''}>${icon('star')}</button>`;
 }
 async function toggleFav(id){
  if(pendingFavorites.has(id))return;
  if(!cloud.configured){favoriteFeedback.set(id,{message:'Salvataggio online non configurato.',type:'error'});renderList(false);if(selected===id)updateDetailFav();toast('Salvataggio online non configurato: conserva o compila cloud-config.js.');return;}
  pendingFavorites.add(id);favoriteFeedback.set(id,{message:'Salvataggio in corso...',type:'pending'});renderList(false);if(selected===id)updateDetailFav();
- try{const own=Boolean(cloud.summary.get(id)?.mine);await cloud.favorite(id,!own);favoriteFeedback.set(id,{message:own?'La tua stella è stata rimossa.':'Preferito salvato sul sito.',type:'success'});}
+ try{
+  const own=Boolean(favoriteState(id)?.mine);
+  if(BYID.get(id)?.communityPlace)await community.favorite(id.slice(5),!own);
+  else await cloud.favorite(id,!own);
+  favoriteFeedback.set(id,{message:own?'La tua stella è stata rimossa.':'Preferito salvato sul sito.',type:'success'});
+ }
  catch(e){favoriteFeedback.set(id,{message:cloud.errorText(e),type:'error'});toast(cloud.errorText(e));}
  finally{pendingFavorites.delete(id);renderList(false);if(selected===id)updateDetailFav();}
 }
 function updateDetailFav(){
  const b=$('#detail-fav');if(!b)return;
- const s=cloud.summary.get(selected),own=Boolean(s?.mine),shared=Number(s?.favorite_count||0)>0;
+ const s=favoriteState(selected),own=Boolean(s?.mine),shared=Number(s?.favorite_count||0)>0;
  b.innerHTML=icon('star')+(own?'Rimuovi la mia stella':'Segnala preferito');
  b.setAttribute('aria-pressed',String(own));b.classList.toggle('active',own);b.disabled=pendingFavorites.has(selected);
  const hint=$('#shared-favorite-state');if(hint)hint.textContent=favoriteFeedback.get(selected)?.message||(shared?(own?'Questo luogo \u00e8 nella raccolta comune, anche grazie alla tua segnalazione.':'Questo luogo \u00e8 gi\u00e0 nella raccolta comune. Puoi aggiungere la tua segnalazione.'):'Nessuna segnalazione nella raccolta comune.');
@@ -116,7 +128,7 @@ async function publishNote(id){
 }
 function setupSharedUI(){
  cloud.subscribe(()=>{
-  favorites=new Set([...cloud.summary.entries()].filter(([,v])=>v.favorite_count>0).map(([id])=>id));
+  rebuildFavoriteIndex();
   if(state.favorites){candidates=computeCandidates();filtered=computeFiltered();sortFiltered();}
   renderList(false);atlas.draw();updateDetailFav();
   if(selected&&!BYID.get(selected)?.communityPlace&&cloud.state==='ready'&&!noteDrafts.get(selected)?.saving){clearTimeout(cloudRefreshSelected);cloudRefreshSelected=setTimeout(()=>{if(selected)loadSharedPlace(selected);},250);}
@@ -244,8 +256,8 @@ function renderList(scroll=false){
  for(const p of filtered.slice(0,visibleLimit)){
   const card=document.createElement('article');card.className='place-card'+(p.id===selected?' selected':'');card.dataset.id=p.id;card.style.setProperty('--cat',COLORS[p.category]);
   const feedback=favoriteFeedback.get(p.id);
-  card.innerHTML=`<button class="card-main" aria-label="Apri ${esc(p.name)}"><span class="category-icon">${icon(p.category)}</span><span class="cardtext"><span class="card-name">${esc(p.name)}</span><span class="card-zone">${esc(p.region)} &middot; ${esc(p.guideZone)}</span><span class="card-meta"><span class="card-prominence level-${importanceLevel(p)}">${importanceLabel(p)}</span><span class="badge ${p.verification==='approssimata'?'approximate':p.verification==='da_guida'?'from-guide':''}">${geoLabel(p)}</span></span>${feedback?`<span class="favorite-feedback ${esc(feedback.type)}" role="status">${esc(feedback.message)}</span>`:''}</span></button>${p.communityPlace?'':sharedFavoriteHTML(p)}`;
-  card.querySelector('.card-main').onclick=()=>openDetail(p.id);if(!p.communityPlace)card.querySelector('.fav').onclick=()=>toggleFav(p.id);frag.append(card);
+  card.innerHTML=`<button class="card-main" aria-label="Apri ${esc(p.name)}"><span class="category-icon">${icon(p.category)}</span><span class="cardtext"><span class="card-name">${esc(p.name)}</span><span class="card-zone">${esc(p.region)} &middot; ${esc(p.guideZone)}</span><span class="card-meta"><span class="card-prominence level-${importanceLevel(p)}">${importanceLabel(p)}</span><span class="badge ${p.verification==='approssimata'?'approximate':p.verification==='da_guida'?'from-guide':''}">${geoLabel(p)}</span></span>${feedback?`<span class="favorite-feedback ${esc(feedback.type)}" role="status">${esc(feedback.message)}</span>`:''}</span></button>${sharedFavoriteHTML(p)}`;
+  card.querySelector('.card-main').onclick=()=>openDetail(p.id);card.querySelector('.fav').onclick=()=>toggleFav(p.id);frag.append(card);
  }
  list.append(frag);
  if(filtered.length>visibleLimit){const b=document.createElement('button');b.className='btn loadmore';b.textContent='Mostra altri luoghi';b.onclick=()=>{visibleLimit+=45;renderList(false);};list.append(b);}
@@ -287,9 +299,11 @@ function openDetail(id){
   geo=`<div class="geo-block"><div class="geo-title">${icon('check')}${geoLabel(p)}</div><p>${explanation}</p><details><summary>Coordinate e fonte del riscontro</summary><code>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</code><a href="${esc(safeURL(p.geoSource))}" target="_blank" rel="noopener noreferrer">${esc(p.geoSourceName)} ${icon('arrow')}</a><p>Riscontro documentale: ${esc(p.geoChecked)}. ${esc(p.geoMethod||'Coordinate pubblicate nella fonte indicata.')} Non implica verifica degli accessi.</p></details></div>`;
  }
  const link=p.verification==='segnalata'?safeURL(p.geoSource):approximate?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name+' '+(a.reference||p.guideSection)+' France')}`:`https://www.google.com/maps/search/?api=1&query=${p.lat}%2C${p.lon}`;
- d.innerHTML=`<div class="detail-top"><div class="detail-cat">${icon(p.category)}${esc(META.categories[p.category])}</div><button class="btn iconbtn detail-close" id="close-detail" aria-label="Chiudi scheda">${icon('close')}</button><h2>${esc(p.name)}</h2><p class="detail-area">${esc(p.region)} &middot; ${esc(p.guideSection)}</p>${importanceLevel(p)>1?`<span class="prominence-chip" title="Richiamo editoriale riconosciuto nelle guide, non una valutazione a stelle">${importanceLabel(p)}</span>`:''}</div><div class="detail-body">${geo}<div class="detail-actions"><a class="btn primary map-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${icon('arrow')}${approximate?'Cerca il luogo su Maps':'Apri su Maps'}</a>${p.communityPlace?'':`<button class="btn" id="detail-fav">${icon('star')}Preferito</button>`}</div>${p.communityPlace?'':`<p id="shared-favorite-state" class="shared-muted" role="status"></p>`}<div class="edit-place-actions"><button type="button" class="btn" id="report-position">${icon('pin')}Segnala posizione</button><button type="button" class="btn" id="hide-place">${icon('minus')}Nascondi per me</button>${p.communityPlace&&community.currentUserId===p.createdBy?`<button type="button" class="btn danger-outline" id="delete-community-place">Elimina il mio luogo</button>`:''}${p.latestCorrection?.created_by===community.currentUserId?`<button type="button" class="btn quiet-btn" id="withdraw-position">Ritira la mia segnalazione</button>`:''}</div><section class="guide-text-section"><div class="guide-text-top"><h3>Descrizione</h3>${p.communityPlace?'':`<button class="btn" id="read-wide">${icon('list')}Lettura ampia</button>`}</div>${passageListHTML(p)}</section>${p.communityPlace?'':sharedNoteSection(id)}<h3 class="section-title">Altri luoghi nei dintorni</h3><div class="nearby" id="related"></div></div>`;
+ d.innerHTML=`<div class="detail-top"><div class="detail-cat">${icon(p.category)}${esc(META.categories[p.category])}</div><button class="btn iconbtn detail-close" id="close-detail" aria-label="Chiudi scheda">${icon('close')}</button><h2>${esc(p.name)}</h2><p class="detail-area">${esc(p.region)} &middot; ${esc(p.guideSection)}</p>${importanceLevel(p)>1?`<span class="prominence-chip" title="Richiamo editoriale riconosciuto nelle guide, non una valutazione a stelle">${importanceLabel(p)}</span>`:''}</div><div class="detail-body">${geo}<div class="detail-actions"><a class="btn primary map-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${icon('arrow')}${approximate?'Cerca il luogo su Maps':'Apri su Maps'}</a><button class="btn" id="detail-fav">${icon('star')}Preferito</button></div><p id="shared-favorite-state" class="shared-muted" role="status"></p><div class="edit-place-actions"><button type="button" class="btn" id="report-position">${icon('pin')}Segnala posizione</button><button type="button" class="btn" id="hide-place">${icon('minus')}Nascondi per me</button>${p.communityPlace&&community.currentUserId===p.createdBy?`<button type="button" class="btn danger-outline" id="delete-community-place">Elimina il mio luogo</button>`:''}${p.latestCorrection?.created_by===community.currentUserId?`<button type="button" class="btn quiet-btn" id="withdraw-position">Ritira la mia segnalazione</button>`:''}</div><section class="guide-text-section"><div class="guide-text-top"><h3>Descrizione</h3>${p.communityPlace?'':`<button class="btn" id="read-wide">${icon('list')}Lettura ampia</button>`}</div>${passageListHTML(p)}</section>${p.communityPlace?'':sharedNoteSection(id)}<h3 class="section-title">Altri luoghi nei dintorni</h3><div class="nearby" id="related"></div></div>`;
  $('#close-detail').onclick=()=>closeDetail();
- if(!p.communityPlace){$('#detail-fav').onclick=()=>toggleFav(id);$('#read-wide').onclick=()=>openReader(id);updateDetailFav();bindSharedPlace(id);}
+ $('#detail-fav').onclick=()=>toggleFav(id);
+ updateDetailFav();
+ if(!p.communityPlace){$('#read-wide').onclick=()=>openReader(id);bindSharedPlace(id);}
  $('#report-position').onclick=()=>openPlaceEditor('correction',id);
  $('#hide-place').onclick=()=>hidePlace(id);
  if($('#delete-community-place'))$('#delete-community-place').onclick=()=>removeMyPlace(p);
@@ -523,13 +537,14 @@ function mergeCommunityData(){
  }
  PLACES.splice(0,PLACES.length,...merged);BYID.clear();SEARCH.clear();NAME_SEARCH.clear();
  PLACES.forEach(p=>{BYID.set(p.id,p);indexPlace(p);});
+ rebuildFavoriteIndex();
  for(const id of [...hiddenPlaces])if(!BYID.has(id))hiddenPlaces.delete(id);
  updateSelectOptions();
  if(selected&&!BYID.has(selected))closeDetail(false);
  applyFilters();
- if(selected){const after=BYID.get(selected);const nextFingerprint=after?JSON.stringify([after.lat,after.lon,after.geoSource,after.description,after.latestCorrection?.id]):'';if(priorFingerprint!==nextFingerprint)openDetail(selected);}
+ if(selected){updateDetailFav();const after=BYID.get(selected);const nextFingerprint=after?JSON.stringify([after.lat,after.lon,after.geoSource,after.description,after.latestCorrection?.id]):'';if(priorFingerprint!==nextFingerprint)openDetail(selected);}
  if($('#hidden-dialog').open)renderHidden();
- $('#community-state').textContent='Contributi condivisi aggiornati · '+community.places.length+' luoghi aggiunti, '+community.corrections.length+' segnalazioni';
+ $('#community-state').textContent='Contributi condivisi aggiornati · '+community.places.length+' luoghi aggiunti, '+community.corrections.length+' segnalazioni'+(community.favoritesAvailable?'':' · Preferiti nuovi luoghi: esegui community-favorites-setup.sql');
 }
 async function updateCommunity(){try{await community.refresh();}catch(e){$('#community-state').textContent=community.error||String(e.message);}}
 async function submitPlaceEditor(event){
