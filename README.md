@@ -5,7 +5,7 @@ Versione aggiornata con nuovi luoghi, segnalazioni di posizioni tramite puntina 
 ## Attivazione su GitHub Pages e Supabase
 
 1. In Supabase apri il progetto già indicato in `cloud-config.js`.
-2. Apri **SQL Editor** ed esegui `community-setup.sql`, seguito da **`community-favorites-setup.sql`**. Se avevi già attivato il sito e `community-setup.sql` era stato eseguito, **esegui solo il nuovo file `community-favorites-setup.sql`**. Entrambi sono additivi e non cancellano i dati preesistenti di preferiti o note (RPC `atlas_v5_*`).
+2. Apri **SQL Editor** ed esegui `community-setup.sql`, seguito da **`community-favorites-setup.sql`** e **`community-favorites-fix.sql`**. Se avevi già attivato il sito e `community-setup.sql` era stato eseguito, **esegui `community-favorites-setup.sql` (se non ancora eseguito), poi `community-favorites-fix.sql`**. Entrambi sono additivi e non cancellano i dati preesistenti di preferiti o note (RPC `atlas_v5_*`).
 3. Nella sezione **Authentication** di Supabase, verifica che gli accessi anonimi (**Anonymous Sign-Ins**) siano attivi. Per il sito pubblico conviene configurare una protezione CAPTCHA/Turnstile e controllare periodicamente le segnalazioni.
 4. Sostituisci sul repository GitHub i vecchi file con **tutti** i file di questa cartella, mantenendoli nella directory di pubblicazione di GitHub Pages. Conserva `index.html`, `app.js`, `cloud.js`, `community.js`, `cloud-config.js`, `map-config.js` e `.nojekyll`. Il sito è statico e non richiede compilazione.
 5. Ricarica il sito pubblicato: in sidebar deve comparire il pulsante **Aggiungi luogo** e la riga di stato dei contributi condivisi. Se compare «Esegui community-setup.sql», la migrazione non è ancora disponibile al client o la cache schema di Supabase non è aggiornata.
@@ -29,7 +29,7 @@ Versione aggiornata con nuovi luoghi, segnalazioni di posizioni tramite puntina 
 3. Trascina la mappa per spostarti, usa i comandi zoom e **tocca o clicca** il punto esatto da salvare. Una puntina evidenzia la selezione. Per cambiare posizione, tocca o clicca un altro punto. Con la tastiera usa Invio sulla mappa per selezionare il centro.
 4. Premi **Conferma posizione** per riportare le coordinate nel modulo, poi **Salva nel database condiviso**. **Annulla** ripristina il modulo senza sostituire le coordinate.
 
-**Il collegamento Google Maps è facoltativo.** Quando non viene fornito, il sito genera un collegamento Google Maps navigabile a partire dal punto selezionato, per rispettare lo schema del database già installato. Questo collegamento **non costituisce una fonte esterna di verifica**: il luogo resta contrassegnato come posizione proposta da un visitatore, non verificata. Non è necessaria alcuna nuova migrazione SQL per questa versione: `community-setup.sql` e `community-favorites-setup.sql` rimangono validi.
+**Il collegamento Google Maps è facoltativo.** Quando non viene fornito, il sito genera un collegamento Google Maps navigabile a partire dal punto selezionato, per rispettare lo schema del database già installato. Questo collegamento **non costituisce una fonte esterna di verifica**: il luogo resta contrassegnato come posizione proposta da un visitatore, non verificata. La scelta della puntina non richiede nuove tabelle: per correggere i permessi dei preferiti comuni e installare la RPC, esegui anche `community-favorites-fix.sql`.
 
 ## Link Google Maps e coordinate
 
@@ -41,6 +41,17 @@ I collegamenti abbreviati `https://maps.app.goo.gl/...` non contengono le coordi
 
 Le nuove tabelle utilizzano Row Level Security: lettura pubblica, scrittura da sessioni anonime autenticabili, eliminazione consentita solo all'autore. Il trigger SQL limita a 5 nuovi luoghi e 25 segnalazioni per identità anonima nelle ultime 24 ore, senza impedire che più profili anonimi vengano creati. I contributi non sono sottoposti a moderazione preventiva: non considerarli verifiche ufficiali. Non condividere informazioni personali nelle descrizioni.
 
-Il sistema originario di **preferiti e note** è conservato per le località presenti nelle guide. I nuovi luoghi utilizzano `atlas_community_favorites` per i **preferiti comuni**; i conteggi vengono forniti dalla funzione `atlas_community_favorite_snapshot()` senza esporre gli identificativi dei visitatori. **Le note condivise restano disponibili soltanto per il catalogo originale.** La migrazione non modifica l'archivio v5 esistente.
+Il sistema originario di **preferiti e note** è conservato per le località presenti nelle guide. I nuovi luoghi utilizzano `atlas_community_favorites` per i **preferiti comuni**. Il salvataggio avviene tramite la funzione `atlas_community_set_favorite` protetta da controllo `auth.uid()`, mentre le versioni precedenti del sito sono compatibili grazie alla SELECT sulle sole righe proprie; i conteggi vengono forniti dalla funzione `atlas_community_favorite_snapshot()` senza esporre gli identificativi dei visitatori. **Le note condivise restano disponibili soltanto per il catalogo originale.** La migrazione non modifica l'archivio v5 esistente.
 
 La pubblicazione su GitHub Pages e l'esecuzione dello script SQL su Supabase devono essere completate dall'amministratore del sito. La sola copia dei file non crea le tabelle nel database remoto.
+
+## Correzione errore "Scrittura non autorizzata" sui nuovi preferiti
+
+1. Il file `community-favorites-setup.sql` deve essere stato eseguito nel progetto Supabase corretto.
+2. Apri Supabase > SQL Editor, crea una nuova query e **esegui `community-favorites-fix.sql`**. Questo script e' ripetibile e non cancella dati.
+3. Pubblica su GitHub Pages i file aggiornati del sito, in particolare `community.js`, e aggiorna la pagina forzando la cache (`Ctrl+F5`).
+4. Segna un luogo creato dagli utenti con la stella e verifica che la voce compaia tra i Preferiti comuni. Rimuovila e verifica che il conteggio diminuisca.
+
+La migrazione concede la lettura completa delle colonne di `atlas_community_favorites` soltanto al ruolo `authenticated`, ma la policy `atlas_community_favorites_select_own` limita sempre le righe visibili a quelle dell'utente corrente. Il nuovo endpoint RPC riceve esclusivamente l'ID del luogo e un booleano: l'ID dell'autore viene ricavato dalla sessione.
+
+Se la scrittura fallisce ancora dopo la migrazione, verificare il **codice e il messaggio originali** della risposta Supabase nella scheda Network degli strumenti sviluppatore. Il solo messaggio 403 del sito non consente di individuare con certezza la causa remota.

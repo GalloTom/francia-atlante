@@ -77,16 +77,21 @@ class AtlasCommunity {
   async favorite(uuid,value){
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid))throw Error('Identificativo del luogo non valido.');
     if(!this.favoritesAvailable)throw Error('Esegui community-favorites-setup.sql su Supabase per attivare i preferiti dei nuovi luoghi.');
-    if(value){
-      await this.request('atlas_community_favorites',{
-        method:'POST',body:{place_id:uuid},prefer:'resolution=ignore-duplicates,missing=default,return=minimal'
+    let row;
+    try {
+      row=await this.request('rpc/atlas_community_set_favorite',{
+        method:'POST',body:{p_place_id:uuid,p_value:Boolean(value)}
       });
-    }else{
-      await this.request('atlas_community_favorites',{
-        method:'DELETE',query:'?place_id=eq.'+encodeURIComponent(uuid)
-      });
+    } catch(e) {
+      if(e.code==='PGRST202'||/atlas_community_set_favorite/i.test(String(e.message)))
+        throw Error('Esegui community-favorites-fix.sql nello SQL Editor di Supabase per abilitare il salvataggio dei preferiti.');
+      throw e;
     }
-    await this.refresh();
+    if(!row||row.place_id!=='user-'+uuid||!Number.isFinite(Number(row.favorite_count))||typeof row.mine!=='boolean')
+      throw Error('Risposta non valida dal database: aggiorna la pagina per verificare il preferito.');
+    this.favoriteSummary.set(row.place_id,{favorite_count:Number(row.favorite_count),mine:row.mine});
+    this.notify();
+    return row;
   }
   async removePlace(uuid){await this.request('atlas_user_places',{method:'DELETE',query:'?id=eq.'+encodeURIComponent(uuid)});await this.refresh();}
   async removeReport(uuid){await this.request('atlas_place_corrections',{method:'DELETE',query:'?id=eq.'+encodeURIComponent(uuid)});await this.refresh();}
