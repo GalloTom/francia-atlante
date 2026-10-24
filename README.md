@@ -4,11 +4,26 @@ Versione aggiornata con nuovi luoghi, segnalazioni di posizioni tramite puntina 
 
 ## Attivazione su GitHub Pages e Supabase
 
-1. In Supabase apri il progetto già indicato in `cloud-config.js`.
-2. Apri **SQL Editor** ed esegui `community-setup.sql`, seguito da **`community-favorites-setup.sql`** e **`community-favorites-fix.sql`**. Se avevi già attivato il sito e `community-setup.sql` era stato eseguito, **esegui `community-favorites-setup.sql` (se non ancora eseguito), poi `community-favorites-fix.sql`**. Entrambi sono additivi e non cancellano i dati preesistenti di preferiti o note (RPC `atlas_v5_*`).
-3. Nella sezione **Authentication** di Supabase, verifica che gli accessi anonimi (**Anonymous Sign-Ins**) siano attivi. Per il sito pubblico conviene configurare una protezione CAPTCHA/Turnstile e controllare periodicamente le segnalazioni.
-4. Sostituisci sul repository GitHub i vecchi file con **tutti** i file di questa cartella, mantenendoli nella directory di pubblicazione di GitHub Pages. Conserva `index.html`, `app.js`, `cloud.js`, `community.js`, `cloud-config.js`, `map-config.js` e `.nojekyll`. Il sito è statico e non richiede compilazione.
-5. Ricarica il sito pubblicato: in sidebar deve comparire il pulsante **Aggiungi luogo** e la riga di stato dei contributi condivisi. Se compare «Esegui community-setup.sql», la migrazione non è ancora disponibile al client o la cache schema di Supabase non è aggiornata.
+**Se il sito e' gia' pubblicato e le tabelle sono attive:** apri Supabase > SQL Editor,
+esegui **solo `community-unlimited.sql`** e verifica che l'esito sia `OK`.
+Il sito gia' pubblicato puo' salvare subito nuovi luoghi e correzioni senza limiti
+imposti dagli script dell'Atlante. Pubblicare la versione aggiornata del sito
+rimuove inoltre il limite di lettura di 10.000 record per tabella.
+
+**Se installi il progetto da zero:**
+1. In Supabase apri il progetto indicato in `cloud-config.js`.
+2. Nel **SQL Editor** esegui `community-setup.sql`, poi `community-favorites-setup.sql`
+   e infine `community-favorites-fix.sql`. Le versioni attuali non introducono
+   limiti giornalieri. Non e' necessario eseguire `community-limits-fix.sql`, ora obsoleto.
+3. In **Authentication** attiva **Anonymous Sign-Ins**; le funzioni richiedono
+   un'identita' anonima autenticata.
+4. Pubblica sul repository GitHub i file di questa cartella, nella directory usata
+   da GitHub Pages. Il sito statico non richiede compilazione.
+5. Ricarica la pagina con `Ctrl+F5`.
+
+Attenzione: i contributi sono pubblici e non vengono moderati prima della
+pubblicazione. L'assenza di limiti applicativi aumenta il rischio di spam e di
+crescita incontrollata del database.
 
 `cloud-config.js` e `map-config.js` contengono soltanto chiavi pubblicabili/client-side. Non introdurre in questi file chiavi `service_role`, `sb_secret_` o token amministrativi.
 
@@ -39,7 +54,7 @@ I collegamenti abbreviati `https://maps.app.goo.gl/...` non contengono le coordi
 
 ## Database, sicurezza e limiti
 
-Le nuove tabelle utilizzano Row Level Security: lettura pubblica, scrittura da sessioni anonime autenticabili, eliminazione consentita solo all'autore. Il trigger SQL limita a 5 nuovi luoghi e 25 segnalazioni per identità anonima nelle ultime 24 ore, senza impedire che più profili anonimi vengano creati. I contributi non sono sottoposti a moderazione preventiva: non considerarli verifiche ufficiali. Non condividere informazioni personali nelle descrizioni.
+Le tabelle utilizzano Row Level Security: lettura pubblica, scrittura da sessioni anonime autenticate, eliminazione consentita solo all'autore. Le funzioni trigger verificano l'autore e la data, senza introdurre soglie quantitative per nuovi luoghi, correzioni o preferiti dei luoghi aggiunti. Questo non elimina i limiti API, di rete, di dimensione dei dati o di utilizzo previsti da Supabase. I contributi non sono sottoposti a moderazione preventiva: non considerarli verifiche ufficiali. Non condividere informazioni personali nelle descrizioni.
 
 Il sistema originario di **preferiti e note** è conservato per le località presenti nelle guide. I nuovi luoghi utilizzano `atlas_community_favorites` per i **preferiti comuni**. Il salvataggio avviene tramite la funzione `atlas_community_set_favorite` protetta da controllo `auth.uid()`, mentre le versioni precedenti del sito sono compatibili grazie alla SELECT sulle sole righe proprie; i conteggi vengono forniti dalla funzione `atlas_community_favorite_snapshot()` senza esporre gli identificativi dei visitatori. **Le note condivise restano disponibili soltanto per il catalogo originale.** La migrazione non modifica l'archivio v5 esistente.
 
@@ -55,3 +70,23 @@ La pubblicazione su GitHub Pages e l'esecuzione dello script SQL su Supabase dev
 La migrazione concede la lettura completa delle colonne di `atlas_community_favorites` soltanto al ruolo `authenticated`, ma la policy `atlas_community_favorites_select_own` limita sempre le righe visibili a quelle dell'utente corrente. Il nuovo endpoint RPC riceve esclusivamente l'ID del luogo e un booleano: l'ID dell'autore viene ricavato dalla sessione.
 
 Se la scrittura fallisce ancora dopo la migrazione, verificare il **codice e il messaggio originali** della risposta Supabase nella scheda Network degli strumenti sviluppatore. Il solo messaggio 403 del sito non consente di individuare con certezza la causa remota.
+
+
+## Contributi illimitati nell'Atlante (ottobre 2026)
+
+Esegui `community-unlimited.sql` nello SQL Editor di Supabase dopo aver configurato
+le tabelle con gli script precedenti. La migrazione e' ripetibile: rimuove tutte
+le soglie di 24 ore per nuovi luoghi, correzioni e nuovi preferiti dei luoghi
+creati dagli utenti, senza cancellare i contributi esistenti e senza rimuovere
+le regole di autenticazione/RLS. I tre trigger restano attivi come verifiche
+dell'autore; nel risultato dello script devono comparire `3`, `3`, `OK`.
+
+Il vecchio `community-limits-fix.sql` non deve essere utilizzato e nella presente
+versione e' stato reso inoffensivo. Il nuovo `community.js` elimina inoltre il
+limite di lettura di 10.000 record per tabella. Restano le soglie e le quote
+di Supabase, compresi eventuali errori HTTP 429 e i limiti delle funzioni
+originali `atlas_v5_*` per note/preferiti delle guide. Il caricamento di grandi
+quantita' di segnalazioni potrebbe rallentare la mappa.
+
+Se un salvataggio puo' essere stato completato, controlla prima l'elenco dei
+luoghi o delle correzioni per evitare duplicati.

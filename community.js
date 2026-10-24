@@ -31,12 +31,14 @@ class AtlasCommunity {
   }
   async readAll(table) {
     const rows=[];
-    for(let offset=0;offset<10000;offset+=500){
+    let offset=0;
+    while(true){
       const page=await this.request(table,{query:'?select=*&order=created_at.asc,id.asc&limit=500&offset='+offset});
       if(!Array.isArray(page))throw Error('Risposta inattesa del database.');
-      rows.push(...page);if(page.length<500)return rows;
+      rows.push(...page);
+      if(page.length<500)return rows;
+      offset+=page.length;
     }
-    throw Error('Archivio troppo grande per questa versione del sito.');
   }
   async refresh(){
     if(this.inFlight)return this.inFlight;

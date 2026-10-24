@@ -51,22 +51,17 @@ revoke all on public.atlas_place_corrections from anon, authenticated;
 grant select on public.atlas_user_places,public.atlas_place_corrections to anon,authenticated;
 grant insert,delete on public.atlas_user_places,public.atlas_place_corrections to authenticated;
 
--- Hard limits against abusive bulk anonymous submissions (RLS alone does not rate-limit).
+-- Contributi senza soglie giornaliere: il trigger controlla l'autore e impedisce
+-- la falsificazione della data, senza limitare il numero di nuove posizioni.
 create or replace function public.atlas_community_rate_limit()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare amount integer;
+declare v_uid uuid;
 begin
-  new.created_at := now(); -- ignore timestamps supplied by callers
-  if auth.uid() is null or auth.uid() is distinct from new.created_by then
-    raise exception 'Autore non autorizzato';
+  v_uid := (select auth.uid());
+  if v_uid is null or new.created_by is distinct from v_uid then
+    raise exception 'Autore non autorizzato' using errcode = '42501';
   end if;
-  if TG_TABLE_NAME = 'atlas_user_places' then
-    select count(*) into amount from public.atlas_user_places where created_by=auth.uid() and created_at>now()-interval '24 hours';
-    if amount >= 5 then raise exception 'RATE_LIMIT: massimo cinque luoghi nelle ultime 24 ore'; end if;
-  else
-    select count(*) into amount from public.atlas_place_corrections where created_by=auth.uid() and created_at>now()-interval '24 hours';
-    if amount >= 25 then raise exception 'RATE_LIMIT: massimo 25 segnalazioni nelle ultime 24 ore'; end if;
-  end if;
+  new.created_at := now();
   return new;
 end;
 $$;

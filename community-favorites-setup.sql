@@ -55,20 +55,16 @@ $$;
 revoke all on function public.atlas_community_favorite_snapshot() from public, anon, authenticated;
 grant execute on function public.atlas_community_favorite_snapshot() to anon, authenticated;
 
--- Limite semplice per identita' anonima, non sostituisce CAPTCHA/rate-limit a livello API.
+-- Nessuna soglia giornaliera: solo verifica dell'autore e della data.
 create or replace function public.atlas_community_favorite_limit()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare recent_count integer;
+declare v_uid uuid;
 begin
-  if auth.uid() is null or new.created_by is distinct from auth.uid() then
-    raise exception 'Preferito non autorizzato';
+  v_uid := (select auth.uid());
+  if v_uid is null or new.created_by is distinct from v_uid then
+    raise exception 'Preferito non autorizzato' using errcode = '42501';
   end if;
   new.created_at := now();
-  select count(*) into recent_count from public.atlas_community_favorites
-    where created_by = auth.uid() and created_at > now() - interval '24 hours';
-  if recent_count >= 100 then
-    raise exception 'RATE_LIMIT: massimo 100 nuovi preferiti nelle ultime 24 ore';
-  end if;
   return new;
 end;
 $$;

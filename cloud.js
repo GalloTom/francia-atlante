@@ -130,7 +130,9 @@ class AtlasCloud {
   errorText(e) {
     const m = String(e.message || e);
     if (e.status === 409) return 'La nota \u00e8 cambiata in un\u2019altra scheda. Ricarica la versione sul sito prima di salvare.';
-    if (e.status === 429 || /RATE_LIMIT/.test(m)) return 'Troppe modifiche ravvicinate. La modifica non \u00e8 stata salvata: riprova pi\u00f9 tardi.';
+    const sqlLimit = m.match(/RATE_LIMIT:\s*([^\r\n]+)/i);
+    if (sqlLimit) return 'Limite raggiunto: ' + sqlLimit[1].replace(/[.\s]+$/, '') + '. Controlla i dati salvati e riprova quando rientri nel limite delle 24 ore.';
+    if (e.status === 429) return 'Supabase ha limitato temporaneamente le richieste (HTTP 429). Controlla sul sito se la modifica risulta salvata prima di riprovare.';
     if (/anonymous.*disabled/i.test(m)) return 'Attiva Anonymous Sign-Ins nelle impostazioni Authentication di Supabase.';
     if (/captcha/i.test(m)) return 'Verifica antispam non riuscita. Controlla Turnstile e le impostazioni CAPTCHA.';
     if (/PGRST202|schema cache|atlas_v5_/.test(m)) return 'Archivio non inizializzato: esegui supabase-setup.sql nel progetto Supabase.';
