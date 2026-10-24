@@ -297,6 +297,18 @@ body.location-picking .mobile-tabs{pointer-events:none;opacity:.45}
  <p id="edit-state" role="status" class="edit-state"></p>
  <button class="btn primary edit-save" id="edit-save" type="submit">Salva nel database condiviso</button>
 </form></dialog>
+<dialog id="metadata-editor" class="dialog place-editor" aria-labelledby="metadata-title">
+<form id="metadata-editor-form">
+ <div class="dialog-head"><h2 id="metadata-title">Modifica nome e categoria</h2><button type="button" class="btn iconbtn" data-close="metadata-editor" aria-label="Chiudi"><svg class="ico"><use href="#i-close"></use></svg></button></div>
+ <p class="edit-intro">Le modifiche sono condivise con tutti i visitatori. Le informazioni originali delle guide rimangono conservate.</p>
+ <p class="edit-current" id="metadata-place"></p>
+ <input id="metadata-target" type="hidden"/>
+ <label for="metadata-name">Nome del luogo</label><input id="metadata-name" maxlength="120" minlength="2" required autocomplete="off"/>
+ <label for="metadata-region">Regione o zona</label><input id="metadata-region" maxlength="90" minlength="2" required list="edit-regions" autocomplete="off"/>
+ <label for="metadata-category">Categoria</label><select id="metadata-category" required></select>
+ <p id="metadata-status" class="edit-state" role="status"></p>
+ <button id="metadata-save" class="btn primary edit-save" type="submit">Salva modifiche per tutti</button>
+</form></dialog>
 <dialog id="hidden-dialog" class="dialog hidden-dialog" aria-labelledby="hidden-title"><div class="dialog-head"><h2 id="hidden-title">Luoghi nascosti (<span id="hidden-count">0</span>)</h2><button class="btn iconbtn" data-close="hidden-dialog" type="button" aria-label="Chiudi"><svg class="ico"><use href="#i-close"></use></svg></button></div><p>I luoghi nascosti scompaiono soltanto da questo browser. Possono essere ripristinati in qualsiasi momento.</p><div id="hidden-items"></div></dialog>
 <div class="toast" hidden="" id="toast" role="status"></div>
 <noscript><div class="noscript">Questo sito richiede JavaScript per la ricerca e la mappa. Apri il sito in un browser con JavaScript abilitato.</div></noscript>

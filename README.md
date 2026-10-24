@@ -90,3 +90,13 @@ quantita' di segnalazioni potrebbe rallentare la mappa.
 
 Se un salvataggio puo' essere stato completato, controlla prima l'elenco dei
 luoghi o delle correzioni per evitare duplicati.
+
+## Modificare nome, regione e categoria dei luoghi
+
+Per installare l'aggiornamento su un sito esistente, eseguire **`community-metadata-setup.sql`** in Supabase > SQL Editor > New query. Poi pubblicare tutti i file dello ZIP su GitHub Pages e ricaricare con Ctrl+F5. Non occorre rieseguire gli script di setup precedenti.
+
+Nella scheda di **qualunque** località (sia dalle guide sia aggiunta da un visitatore) compare il comando **Modifica nome e categoria**. Il modulo permette di aggiornare **nome, regione/zona e categoria** selezionandola da tutte le categorie dell'Atlante. Le modifiche appaiono per tutti i visitatori dopo il salvataggio e sono riportate in mappa, nella ricerca, nelle schede e nei filtri. La categoria «Coste, isole e spiagge» può così essere modificata in «Città e borghi».
+
+Le modifiche sono conservate in `public.atlas_place_metadata_edits`: una riga per località, con l'ultima modifica condivisa. I dati originali delle guide rimangono immutati nel catalogo incorporato. L'ID del luogo non cambia: preferiti, note, segnalazioni di posizione e preferenze personali restano collegati allo stesso luogo. Tutti gli utenti anonimi autenticati possono modificare gli stessi campi, senza moderazione preventiva e senza quote giornaliere applicative; prevale l'ultima modifica salvata. Non è presente una cronologia completa delle revisioni, quindi per un ripristino occorre reinserire i valori originari. Eventuali limiti infrastrutturali Supabase restano applicabili.
+
+La nuova versione del sito continua a caricare i luoghi e i preferiti esistenti anche se la migrazione SQL non e' ancora stata eseguita, ma il modulo di modifica metadati rimane disabilitato finche' la tabella non e' disponibile.

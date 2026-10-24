@@ -210,7 +210,7 @@ function selectSearchResult(id){
 
 function initControls(){
  for(const r of [...new Set(PLACES.map(p=>p.region))].sort((a,b)=>a.localeCompare(b,'it')))$('#region').add(new Option(r,r));
- for(const[k,v]of Object.entries(META.categories)){$('#category').add(new Option(v,k));$('#edit-category').add(new Option(v,k));}
+ for(const[k,v]of Object.entries(META.categories)){$('#category').add(new Option(v,k));$('#edit-category').add(new Option(v,k));$('#metadata-category').add(new Option(v,k));}
  for(const z of [...new Set(PLACES.map(p=>p.guideZone))].sort((a,b)=>a.localeCompare(b,'it')))$('#zone').add(new Option(z,z));
  $('#search').addEventListener('input',()=>{state.q=normalize($('#search').value);$('#clear-search').hidden=!state.q;applyFilters();clearTimeout(searchTimer);searchTimer=setTimeout(renderSuggestions,150);});
  $('#search').addEventListener('focus',()=>{if(state.q.length>=2)renderSuggestions();});
@@ -300,12 +300,13 @@ function openDetail(id){
   geo=`<div class="geo-block"><div class="geo-title">${icon('check')}${geoLabel(p)}</div><p>${explanation}</p><details><summary>Coordinate e fonte del riscontro</summary><code>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</code><a href="${esc(safeURL(p.geoSource))}" target="_blank" rel="noopener noreferrer">${esc(p.geoSourceName)} ${icon('arrow')}</a><p>Riscontro documentale: ${esc(p.geoChecked)}. ${esc(p.geoMethod||'Coordinate pubblicate nella fonte indicata.')} Non implica verifica degli accessi.</p></details></div>`;
  }
  const link=p.verification==='segnalata'?safeURL(p.geoSource):approximate?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name+' '+(a.reference||p.guideSection)+' France')}`:`https://www.google.com/maps/search/?api=1&query=${p.lat}%2C${p.lon}`;
- d.innerHTML=`<div class="detail-top"><div class="detail-cat">${icon(p.category)}${esc(META.categories[p.category])}</div><button class="btn iconbtn detail-close" id="close-detail" aria-label="Chiudi scheda">${icon('close')}</button><h2>${esc(p.name)}</h2><p class="detail-area">${esc(p.region)} &middot; ${esc(p.guideSection)}</p>${importanceLevel(p)>1?`<span class="prominence-chip" title="Richiamo editoriale riconosciuto nelle guide, non una valutazione a stelle">${importanceLabel(p)}</span>`:''}</div><div class="detail-body">${geo}<div class="detail-actions"><a class="btn primary map-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${icon('arrow')}${approximate?'Cerca il luogo su Maps':'Apri su Maps'}</a><button class="btn" id="detail-fav">${icon('star')}Preferito</button></div><p id="shared-favorite-state" class="shared-muted" role="status"></p><div class="edit-place-actions"><button type="button" class="btn" id="report-position">${icon('pin')}Segnala posizione</button><button type="button" class="btn" id="hide-place">${icon('minus')}Nascondi per me</button>${p.communityPlace&&community.currentUserId===p.createdBy?`<button type="button" class="btn danger-outline" id="delete-community-place">Elimina il mio luogo</button>`:''}${p.latestCorrection?.created_by===community.currentUserId?`<button type="button" class="btn quiet-btn" id="withdraw-position">Ritira la mia segnalazione</button>`:''}</div><section class="guide-text-section"><div class="guide-text-top"><h3>Descrizione</h3>${p.communityPlace?'':`<button class="btn" id="read-wide">${icon('list')}Lettura ampia</button>`}</div>${passageListHTML(p)}</section>${p.communityPlace?'':sharedNoteSection(id)}<h3 class="section-title">Altri luoghi nei dintorni</h3><div class="nearby" id="related"></div></div>`;
+ d.innerHTML=`<div class="detail-top"><div class="detail-cat">${icon(p.category)}${esc(META.categories[p.category])}</div><button class="btn iconbtn detail-close" id="close-detail" aria-label="Chiudi scheda">${icon('close')}</button><h2>${esc(p.name)}</h2><p class="detail-area">${esc(p.region)} &middot; ${esc(p.guideSection)}</p>${importanceLevel(p)>1?`<span class="prominence-chip" title="Richiamo editoriale riconosciuto nelle guide, non una valutazione a stelle">${importanceLabel(p)}</span>`:''}</div><div class="detail-body">${geo}<div class="detail-actions"><a class="btn primary map-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${icon('arrow')}${approximate?'Cerca il luogo su Maps':'Apri su Maps'}</a><button class="btn" id="detail-fav">${icon('star')}Preferito</button></div><p id="shared-favorite-state" class="shared-muted" role="status"></p><div class="edit-place-actions"><button type="button" class="btn" id="report-position">${icon('pin')}Segnala posizione</button><button type="button" class="btn" id="edit-metadata-button">Modifica nome e categoria</button><button type="button" class="btn" id="hide-place">${icon('minus')}Nascondi per me</button>${p.communityPlace&&community.currentUserId===p.createdBy?`<button type="button" class="btn danger-outline" id="delete-community-place">Elimina il mio luogo</button>`:''}${p.latestCorrection?.created_by===community.currentUserId?`<button type="button" class="btn quiet-btn" id="withdraw-position">Ritira la mia segnalazione</button>`:''}</div><section class="guide-text-section"><div class="guide-text-top"><h3>Descrizione</h3>${p.communityPlace?'':`<button class="btn" id="read-wide">${icon('list')}Lettura ampia</button>`}</div>${passageListHTML(p)}</section>${p.communityPlace?'':sharedNoteSection(id)}<h3 class="section-title">Altri luoghi nei dintorni</h3><div class="nearby" id="related"></div></div>`;
  $('#close-detail').onclick=()=>closeDetail();
  $('#detail-fav').onclick=()=>toggleFav(id);
  updateDetailFav();
  if(!p.communityPlace){$('#read-wide').onclick=()=>openReader(id);bindSharedPlace(id);}
  $('#report-position').onclick=()=>openPlaceEditor('correction',id);
+ $('#edit-metadata-button').onclick=()=>openMetadataEditor(id);
  $('#hide-place').onclick=()=>hidePlace(id);
  if($('#delete-community-place'))$('#delete-community-place').onclick=()=>removeMyPlace(p);
  if($('#withdraw-position'))$('#withdraw-position').onclick=()=>withdrawMyCorrection(p);
@@ -580,6 +581,36 @@ function updateSelectOptions(){
  const list=$('#edit-regions');list.replaceChildren();
  for(const r of [...new Set(PLACES.map(p=>p.region))].sort((a,b)=>a.localeCompare(b,'it'))){const el=document.createElement('option');el.value=r;list.append(el);}
 }
+function openMetadataEditor(id){
+ const p=BYID.get(id);if(!p)return;
+ $('#metadata-target').value=id;
+ $('#metadata-name').value=p.name;
+ $('#metadata-region').value=p.region;
+ $('#metadata-category').value=p.category;
+ $('#metadata-place').textContent='Modifica condivisa: '+p.name;
+ $('#metadata-status').textContent=community.metadataAvailable?'Le modifiche saranno visibili a tutti i visitatori. I dati originali delle guide rimangono conservati.':'Per salvare le modifiche esegui prima community-metadata-setup.sql su Supabase.';
+ $('#metadata-save').disabled=!community.metadataAvailable;
+ $('#metadata-editor').showModal();
+ $('#metadata-name').focus();
+}
+async function submitMetadataEditor(event){
+ event.preventDefault();
+ const button=$('#metadata-save'),status=$('#metadata-status');
+ const place_id=$('#metadata-target').value;
+ const current=BYID.get(place_id);
+ if(!current){status.textContent='Il luogo non è più presente nel catalogo.';return;}
+ const name=$('#metadata-name').value.trim(),region=$('#metadata-region').value.trim(),category=$('#metadata-category').value;
+ if(name.length<2||name.length>120||region.length<2||region.length>90||!Object.hasOwn(META.categories,category)){
+  status.textContent='Verifica il nome, la regione e la categoria selezionata.';return;
+ }
+ button.disabled=true;status.textContent='Salvataggio condiviso in corso...';
+ try{
+  await community.editMetadata({place_id,name,region,category});
+  $('#metadata-editor').close();
+  toast('Nome, regione e categoria aggiornati per tutti i visitatori.');
+ }catch(e){status.textContent=cloud.errorText(e);}
+ finally{button.disabled=false;}
+}
 function communityPlaceFromRow(row){
  return {id:'user-'+row.id,name:row.name,region:row.region,guideZone:row.region,guideSection:'Luogo aggiunto dagli utenti',category:row.category,
   description:row.description||'',excerpt:row.description||'',rawCategory:'',sources:[],guideLinks:[],guideTexts:[],
@@ -589,7 +620,7 @@ function communityPlaceFromRow(row){
 }
 function mergeCommunityData(){
  const before=selected?BYID.get(selected):null;
- const priorFingerprint=before?JSON.stringify([before.lat,before.lon,before.geoSource,before.description,before.latestCorrection?.id]):'';
+ const priorFingerprint=before?JSON.stringify([before.name,before.region,before.category,before.lat,before.lon,before.geoSource,before.description,before.latestCorrection?.id,before.metadataEdit?.updated_at]):'';
  const merged=BASE_PLACES.map(p=>({...p}));
  for(const row of community.places) merged.push(communityPlaceFromRow(row));
  const dictionary=new Map(merged.map(p=>[p.id,p]));
@@ -599,6 +630,14 @@ function mergeCommunityData(){
   p.geoSource=correction.maps_url;p.geoSourceName=isAtlasPinURL(correction.maps_url)?'Puntina collocata sulla mappa dell’atlante':'Segnalazione da Google Maps';p.geoChecked=correction.created_at;
   p.latestCorrection=correction;
  }
+ // Nome, regione e categoria hanno precedenza sui valori originari, senza cambiare l'ID.
+ // ID invariati significa che stelle, note, posizioni e luoghi nascosti restano associati.
+ for(const edit of community.metadataEdits){
+  const p=dictionary.get(edit.place_id);
+  if(!p||!Object.hasOwn(META.categories,edit.category))continue;
+  p.name=edit.name;p.region=edit.region;p.category=edit.category;p.metadataEdit=edit;
+  if(p.communityPlace)p.guideZone=edit.region;
+ }
  PLACES.splice(0,PLACES.length,...merged);BYID.clear();SEARCH.clear();NAME_SEARCH.clear();
  PLACES.forEach(p=>{BYID.set(p.id,p);indexPlace(p);});
  rebuildFavoriteIndex();
@@ -606,9 +645,9 @@ function mergeCommunityData(){
  updateSelectOptions();
  if(selected&&!BYID.has(selected))closeDetail(false);
  applyFilters();
- if(selected){updateDetailFav();const after=BYID.get(selected);const nextFingerprint=after?JSON.stringify([after.lat,after.lon,after.geoSource,after.description,after.latestCorrection?.id]):'';if(priorFingerprint!==nextFingerprint)openDetail(selected);}
+ if(selected){updateDetailFav();const after=BYID.get(selected);const nextFingerprint=after?JSON.stringify([after.name,after.region,after.category,after.lat,after.lon,after.geoSource,after.description,after.latestCorrection?.id,after.metadataEdit?.updated_at]):'';if(priorFingerprint!==nextFingerprint)openDetail(selected);}
  if($('#hidden-dialog').open)renderHidden();
- $('#community-state').textContent='Contributi condivisi aggiornati · '+community.places.length+' luoghi aggiunti, '+community.corrections.length+' segnalazioni'+(community.favoritesAvailable?'':' · Preferiti nuovi luoghi: esegui community-favorites-setup.sql');
+ $('#community-state').textContent='Contributi condivisi aggiornati · '+community.places.length+' luoghi aggiunti, '+community.corrections.length+' segnalazioni'+(community.favoritesAvailable?'':' · Preferiti nuovi luoghi: esegui community-favorites-setup.sql')+(community.metadataAvailable?'':' · Modifica nome/categoria: esegui community-metadata-setup.sql');
 }
 async function updateCommunity(){try{await community.refresh();}catch(e){$('#community-state').textContent=community.error||String(e.message);}}
 async function submitPlaceEditor(event){
@@ -661,6 +700,7 @@ function setupCommunityUI(){
  $('#location-pick-confirm').onclick=()=>finishLocationPicker(true);
  document.addEventListener('keydown',e=>{if(locationPicker&&e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();finishLocationPicker(false);}},true);
  $('#place-editor-form').addEventListener('submit',submitPlaceEditor);
+ $('#metadata-editor-form').addEventListener('submit',submitMetadataEditor);
  community.subscribe(()=>{if(community.ready)mergeCommunityData();});
  updateCommunity();
  communityPoll=setInterval(()=>{if(!document.hidden&&navigator.onLine)updateCommunity();},60000);
@@ -670,4 +710,4 @@ function setupCommunityUI(){
 setupSidebar();initControls();setupExport();const atlas=new Atlas();initMapStyles();atlas.fit(PLACES.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)));applyFilters();setupSharedUI();setupCommunityUI();
 addEventListener('online',()=>{if(MAP_CONFIG.maptilerKey)atlas.retryTiles();});
 // Read-only geometry diagnostics: no session credentials or note contents.
-window.ATLAS_DIAGNOSTICS=()=>({version:8,total:PLACES.length,results:filtered.length,markers:$('#markers').children.length,selected,mapMode:atlas.mode,mapConfigured:Boolean(MAP_CONFIG.maptilerKey),importanceFilter:state.importance,importanceSizes:[24,34,44],zoom:atlas.zoom,sort:state.sort,viewportOnly:true,center:atlas.unproject(atlas.center.x,atlas.center.y),bounds:{nw:atlas.unproject(atlas.center.x-atlas.width/2/2**atlas.zoom,atlas.center.y-atlas.height/2/2**atlas.zoom),se:atlas.unproject(atlas.center.x+atlas.width/2/2**atlas.zoom,atlas.center.y+atlas.height/2/2**atlas.zoom)},sidebar:{width:$('#sidebar').getBoundingClientRect().width,collapsed:sidebarCollapsed},first:filtered.slice(0,45).map(p=>({id:p.id,name:p.name,importance:importanceLevel(p)}))});
+window.ATLAS_DIAGNOSTICS=()=>({version:9,total:PLACES.length,results:filtered.length,markers:$('#markers').children.length,selected,mapMode:atlas.mode,mapConfigured:Boolean(MAP_CONFIG.maptilerKey),importanceFilter:state.importance,importanceSizes:[24,34,44],zoom:atlas.zoom,sort:state.sort,viewportOnly:true,center:atlas.unproject(atlas.center.x,atlas.center.y),bounds:{nw:atlas.unproject(atlas.center.x-atlas.width/2/2**atlas.zoom,atlas.center.y-atlas.height/2/2**atlas.zoom),se:atlas.unproject(atlas.center.x+atlas.width/2/2**atlas.zoom,atlas.center.y+atlas.height/2/2**atlas.zoom)},sidebar:{width:$('#sidebar').getBoundingClientRect().width,collapsed:sidebarCollapsed},first:filtered.slice(0,45).map(p=>({id:p.id,name:p.name,importance:importanceLevel(p)}))});

@@ -2,7 +2,7 @@
    Only a public Supabase publishable key and a short-lived anonymous user JWT are used. */
 'use strict';
 class AtlasCommunity {
-  constructor(cloud) { this.cloud=cloud; this.places=[]; this.corrections=[]; this.favoriteSummary=new Map(); this.favoritesAvailable=false; this.ready=false; this.error=''; this.listeners=new Set(); this.inFlight=null; }
+  constructor(cloud) { this.cloud=cloud; this.places=[]; this.corrections=[]; this.metadataEdits=[]; this.metadataAvailable=false; this.favoriteSummary=new Map(); this.favoritesAvailable=false; this.ready=false; this.error=''; this.listeners=new Set(); this.inFlight=null; }
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   notify() { for (const fn of this.listeners) fn(this); }
   async request(table, {method='GET', query='', body=null, prefer=''}={}) {
@@ -29,11 +29,11 @@ class AtlasCommunity {
       throw e;
     } finally { clearTimeout(timeout); }
   }
-  async readAll(table) {
+  async readAll(table, order='created_at.asc,id.asc') {
     const rows=[];
     let offset=0;
     while(true){
-      const page=await this.request(table,{query:'?select=*&order=created_at.asc,id.asc&limit=500&offset='+offset});
+      const page=await this.request(table,{query:'?select=*&order='+encodeURIComponent(order)+'&limit=500&offset='+offset});
       if(!Array.isArray(page))throw Error('Risposta inattesa del database.');
       rows.push(...page);
       if(page.length<500)return rows;
@@ -44,26 +44,34 @@ class AtlasCommunity {
     if(this.inFlight)return this.inFlight;
     this.inFlight=(async()=>{
       try {
-        const [places,corrections,latestFavorites]=await Promise.all([
+        const [places,corrections,latestFavorites,latestMetadata]=await Promise.all([
           this.readAll('atlas_user_places'),this.readAll('atlas_place_corrections'),
           this.request('rpc/atlas_community_favorite_snapshot').then(rows=>({rows,available:true})).catch(e=>{
             // Publishing the site before the SQL migration must not hide existing community places.
             if(/PGRST202|atlas_community_favorite_snapshot/i.test(String(e.code)+' '+e.message))
               return {rows:[],available:false};
             throw e;
+          }),
+          this.readAll('atlas_place_metadata_edits','place_id.asc').then(rows=>({rows,available:true})).catch(e=>{
+            if(/42P01|PGRST205|Could not find the table|schema cache/i.test(String(e.code)+' '+e.message))
+              return {rows:[],available:false};
+            throw e;
           })
         ]);
         const favoriteRows=latestFavorites.rows;
         if(!Array.isArray(favoriteRows))throw Error('Riepilogo dei preferiti comuni non valido.');
+        if(!Array.isArray(latestMetadata.rows))throw Error('Risposta non valida per le modifiche di nome e categoria.');
         const summary=new Map(favoriteRows.map(row=>[row.place_id,{
           favorite_count:Number(row.favorite_count)||0,mine:row.mine===true
         }]));
         const changed=!this.ready||Boolean(this.error)||this.favoritesAvailable!==latestFavorites.available||
+          this.metadataAvailable!==latestMetadata.available||
           JSON.stringify(this.places)!==JSON.stringify(places)||
           JSON.stringify(this.corrections)!==JSON.stringify(corrections)||
+          JSON.stringify(this.metadataEdits)!==JSON.stringify(latestMetadata.rows)||
           JSON.stringify([...this.favoriteSummary])!==JSON.stringify([...summary]);
-        this.places=places;this.corrections=corrections;this.favoriteSummary=summary;
-        this.favoritesAvailable=latestFavorites.available;
+        this.places=places;this.corrections=corrections;this.metadataEdits=latestMetadata.rows;this.favoriteSummary=summary;
+        this.favoritesAvailable=latestFavorites.available;this.metadataAvailable=latestMetadata.available;
         this.ready=true;this.error='';if(changed)this.notify();
       }catch(e){
         const detail=String(e.code)+' '+e.message;
@@ -73,6 +81,16 @@ class AtlasCommunity {
       }
       finally{this.inFlight=null;}
     })();return this.inFlight;
+  }
+  async editMetadata(record){
+    if(!this.metadataAvailable)throw Error('Esegui community-metadata-setup.sql su Supabase per modificare nome, regione e categoria dei luoghi.');
+    const rows=await this.request('atlas_place_metadata_edits',{
+      method:'POST',query:'?on_conflict=place_id',body:record,
+      prefer:'resolution=merge-duplicates,return=representation'
+    });
+    if(!Array.isArray(rows)||rows.length!==1)throw Error('La modifica non è stata confermata dal database.');
+    await this.refresh();
+    return rows[0];
   }
   async addPlace(record){const r=await this.request('atlas_user_places',{method:'POST',body:record,prefer:'return=representation'});await this.refresh();return r?.[0];}
   async report(record){const r=await this.request('atlas_place_corrections',{method:'POST',body:record,prefer:'return=representation'});await this.refresh();return r?.[0];}
