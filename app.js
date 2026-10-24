@@ -290,7 +290,8 @@ function openDetail(id){
   const scope={comune:'comune o localit\u00e0',zona:'zona o area estesa',sito:'dintorni del sito'}[a.scope]||'zona';
   geo=`<div class="geo-block approximate"><div class="geo-title">${icon('pin')}Posizione approssimativa</div><p class="reference">Riferimento: <strong>${esc(a.reference||p.guideSection)}</strong></p><p class="geo-warning">Il punto indica la zona, non un ingresso o un parcheggio. Pi\u00f9 luoghi possono condividere le stesse coordinate.</p><details><summary>Come \u00e8 stato scelto il punto</summary><p>${esc(a.method)}. Ambito: ${esc(scope)}.</p><code>${p.lat.toFixed(p.id.startsWith('fr-')?2:3)}, ${p.lon.toFixed(p.id.startsWith('fr-')?2:3)} (indicative)</code><p>Stima: ${esc(p.geoEstimated)}. Margine di errore non misurato.</p>${p.geoSource?`<a href="${esc(safeURL(p.geoSource))}" target="_blank" rel="noopener noreferrer">Fonte del riferimento comunale ${icon('arrow')}</a>`:''}</details></div>`;
  }else if(p.verification==='segnalata'){
-  geo=`<div class="geo-block reported"><div class="geo-title">${icon('pin')}Posizione segnalata dagli utenti</div><p>Coordinate proposte da un visitatore e non verificate editorialmente.</p><code>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</code><a href="${esc(safeURL(p.geoSource))}" target="_blank" rel="noopener noreferrer">Apri il riferimento Google Maps ${icon('arrow')}</a>${p.geoChecked?`<p>Segnalazione: ${esc(p.geoChecked.slice(0,10))}</p>`:''}</div>`;
+  const placedOnAtlas=isAtlasPinURL(p.geoSource);
+  geo=`<div class="geo-block reported"><div class="geo-title">${icon('pin')}Posizione segnalata dagli utenti</div><p>${placedOnAtlas?'Punto selezionato sulla mappa dell’atlante.':'Coordinate proposte da un visitatore.'} Posizione non verificata editorialmente.</p><code>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</code><a href="${esc(safeURL(p.geoSource))}" target="_blank" rel="noopener noreferrer">${placedOnAtlas?'Apri il punto su Google Maps':'Apri il riferimento Google Maps'} ${icon('arrow')}</a>${p.geoChecked?`<p>Segnalazione: ${esc(p.geoChecked.slice(0,10))}</p>`:''}</div>`;
  }else if(p.verification==='da_guida'){
   const explanation=p.coordinateRole==='area'?'Punto rappresentativo dell\u2019area indicata nella guida.':'Punto associato al luogo nella guida.';
   geo=`<div class="geo-block from-guide"><div class="geo-title">${icon('pin')}${geoLabel(p)}</div><p>${explanation} Nessun controllo esterno attuale; non certifica ingresso o parcheggio.</p><details><summary>Coordinate e provenienza</summary><code>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</code><p class="geo-source-note">${esc(p.geoSourceName)}. Coordinate recuperate dal collegamento geografico dell\u2019EPUB il ${esc(p.geoRecovered)}; nomi e contesto confrontati con il catalogo. La precisione effettiva non \u00e8 misurata.</p></details></div>`;
@@ -329,11 +330,11 @@ class Atlas{
   new ResizeObserver(()=>this.resize()).observe(this.el);
   this.el.addEventListener('wheel',e=>{e.preventDefault();const r=this.el.getBoundingClientRect();this.zoomBy(e.deltaY>0?-.3:.3,e.clientX-r.left,e.clientY-r.top);},{passive:false});
   this.el.addEventListener('dblclick',e=>{if(e.target.closest('button'))return;const r=this.el.getBoundingClientRect();this.zoomBy(1,e.clientX-r.left,e.clientY-r.top);});
-  this.el.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;this.el.setPointerCapture(e.pointerId);this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});this.drag={x:e.clientX,y:e.clientY,center:{...this.center}};this.el.classList.add('dragging');if(this.pointers.size===2){const [a,b]=[...this.pointers.values()];this.pinch={distance:Math.hypot(a.x-b.x,a.y-b.y),zoom:this.zoom};}});
+  this.el.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;this.el.setPointerCapture(e.pointerId);this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(locationPicker)this.pickStart=this.pointers.size===1?{id:e.pointerId,x:e.clientX,y:e.clientY}:null;this.drag={x:e.clientX,y:e.clientY,center:{...this.center}};this.el.classList.add('dragging');if(this.pointers.size===2){const [a,b]=[...this.pointers.values()];this.pinch={distance:Math.hypot(a.x-b.x,a.y-b.y),zoom:this.zoom};}});
   this.el.addEventListener('pointermove',e=>{if(!this.pointers.has(e.pointerId))return;this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(this.pointers.size===2&&this.pinch){const[a,b]=[...this.pointers.values()];this.zoom=Math.max(4,Math.min(17,this.pinch.zoom+Math.log2(Math.max(1,Math.hypot(a.x-b.x,a.y-b.y))/this.pinch.distance)));}else if(this.drag){const s=2**this.zoom;this.center={x:this.drag.center.x-(e.clientX-this.drag.x)/s,y:this.drag.center.y-(e.clientY-this.drag.y)/s};}this.clamp();this.draw();});
-  const end=e=>{this.pointers.delete(e.pointerId);this.pinch=null;if(this.pointers.size===1){const p=[...this.pointers.values()][0];this.drag={x:p.x,y:p.y,center:{...this.center}};}else{this.drag=null;this.el.classList.remove('dragging');this.viewChanged();}};
+  const end=e=>{const choose=Boolean(locationPicker&&e.type==='pointerup'&&this.pickStart?.id===e.pointerId&&this.pointers.size===1&&Math.hypot(e.clientX-this.pickStart.x,e.clientY-this.pickStart.y)<9);this.pickStart=null;this.pointers.delete(e.pointerId);this.pinch=null;if(this.pointers.size===1){const p=[...this.pointers.values()][0];this.drag={x:p.x,y:p.y,center:{...this.center}};}else{this.drag=null;this.el.classList.remove('dragging');this.viewChanged();}if(choose){const rect=this.el.getBoundingClientRect();chooseLocationAt(e.clientX-rect.left,e.clientY-rect.top);}};
   this.el.addEventListener('pointerup',end);this.el.addEventListener('pointercancel',end);
-  this.el.addEventListener('keydown',e=>{if(e.target.closest('button'))return;const s=2**this.zoom;if(e.key==='+'||e.key==='='){this.zoomBy(1);e.preventDefault();}else if(e.key==='-'){this.zoomBy(-1);e.preventDefault();}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();this.center.x+=({'ArrowLeft':-90,'ArrowRight':90}[e.key]||0)/s;this.center.y+=({'ArrowUp':-90,'ArrowDown':90}[e.key]||0)/s;this.clamp();this.draw();this.viewChanged();}});
+  this.el.addEventListener('keydown',e=>{if(e.target.closest('button'))return;if(locationPicker&&(e.key==='Enter'||e.key===' ')){e.preventDefault();chooseLocationAt(this.width/2,this.height/2);return;}const s=2**this.zoom;if(e.key==='+'||e.key==='='){this.zoomBy(1);e.preventDefault();}else if(e.key==='-'){this.zoomBy(-1);e.preventDefault();}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();this.center.x+=({'ArrowLeft':-90,'ArrowRight':90}[e.key]||0)/s;this.center.y+=({'ArrowUp':-90,'ArrowDown':90}[e.key]||0)/s;this.clamp();this.draw();this.viewChanged();}});
   $('#zoom-in').onclick=()=>this.zoomBy(1);$('#zoom-out').onclick=()=>this.zoomBy(-1);$('#fit').onclick=()=>{const points=candidates.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));if(points.length)this.fit(points);else toast('Nessun luogo compatibile con i filtri.');};
   // No basemap selector: MapTiler only.
  }
@@ -351,7 +352,7 @@ class Atlas{
  }
  draw(){
   cancelAnimationFrame(this.frame);this.frame=requestAnimationFrame(()=>{
-   this.drawBase();this.drawMarkers();this.updateScale();
+   this.drawBase();this.drawMarkers();renderLocationPin();this.updateScale();
    if(BASEMAPS[this.mode].online){
     // Position cached images while panning; request new viewport tiles only
     // after gestures settle. No area prefetch or offline tile download.
@@ -478,14 +479,77 @@ function mapsCoordinateHint(url){
  return null;
 }
 function franceCoordinates(lat,lon){return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=40.5&&lat<=52&&lon>=-6&&lon<=10.5;}
-let editMode='new',editTarget=null,communityPoll=null,editorBusy=false;
+// Map-click reports reuse the existing Supabase schema. The generated URL is a
+// navigational link to the clicked point, not an externally verified source.
+const atlasPinURL=(lat,lon)=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat.toFixed(6)+','+lon.toFixed(6))}&atlas_pin=1`;
+function isAtlasPinURL(value){try{const u=new URL(value);return u.hostname==='www.google.com'&&u.pathname==='/maps/search/'&&u.searchParams.get('atlas_pin')==='1';}catch{return false;}}
+let editMode='new',editTarget=null,communityPoll=null,editorBusy=false,locationPicker=null;
+function renderLocationPin(){
+ const pin=$('#location-pin');if(!pin)return;
+ if(!locationPicker?.point){pin.hidden=true;return;}
+ const point=atlas.point(locationPicker.point.lon,locationPicker.point.lat);
+ pin.hidden=point.x<0||point.x>atlas.width||point.y<0||point.y>atlas.height;
+ pin.style.left=point.x+'px';pin.style.top=point.y+'px';
+}
+function updatePickerState(){
+ const picker=locationPicker;if(!picker)return;
+ const point=picker.point,valid=Boolean(point&&franceCoordinates(point.lat,point.lon));
+ $('#location-pick-confirm').disabled=!valid;
+ $('#location-picker-coordinates').textContent=!point?'Nessun punto selezionato.':!valid?'Il punto è fuori dalla Francia metropolitana.':`Punto: ${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`;
+ renderLocationPin();
+}
+function chooseLocationAt(x,y){
+ if(!locationPicker)return;
+ const latlon=atlas.unproject(atlas.center.x+(x-atlas.width/2)/2**atlas.zoom,atlas.center.y+(y-atlas.height/2)/2**atlas.zoom);
+ locationPicker.point={lat:Number(latlon.lat.toFixed(6)),lon:Number(latlon.lon.toFixed(6))};
+ updatePickerState();
+}
+function beginLocationPicker(){
+ if(locationPicker||editorBusy)return;
+ const current=editMode==='correction'?BYID.get(editTarget):null;
+ const lat=Number($('#edit-lat').value),lon=Number($('#edit-lon').value);
+ const validEntered=$('#edit-lat').value.trim()&&$('#edit-lon').value.trim()&&franceCoordinates(lat,lon);
+ const wasMapView=document.body.classList.contains('map-view');
+ const previousDetail=selected;
+ locationPicker={point:validEntered?{lat,lon}:null,wasMapView,previousDetail,view:{center:{...atlas.center},zoom:atlas.zoom}};
+ $('#place-editor').close();
+ closeDetail(false);
+ if(innerWidth<=760&&!wasMapView)setMobileView(true);
+ document.body.classList.add('location-picking');
+ $('#location-picker-panel').hidden=false;
+ $('#map').setAttribute('aria-label','Scelta posizione: tocca o clicca sulla mappa per collocare la puntina. Trascina per muoverti; premi Invio per selezionare il centro.');
+ if(current&&Number.isFinite(current.lat)&&Number.isFinite(current.lon))atlas.centerOn(current.lon,current.lat,Math.max(13,atlas.zoom));
+ else if(validEntered)atlas.centerOn(lon,lat,Math.max(13,atlas.zoom));
+ updatePickerState();atlas.draw();
+ $('#location-pick-cancel').focus({preventScroll:true});
+}
+function finishLocationPicker(accept){
+ const picker=locationPicker;if(!picker)return;
+ if(accept&&!picker.point)return;
+ const point=picker.point;
+ locationPicker=null;
+ document.body.classList.remove('location-picking');
+ $('#location-picker-panel').hidden=true;$('#location-pin').hidden=true;
+ $('#map').setAttribute('aria-label','Mappa. Trascina per spostarti; usa più e meno per lo zoom. Le frecce spostano la vista.');
+ if(!accept){atlas.center={...picker.view.center};atlas.zoom=picker.view.zoom;atlas.draw();atlas.viewChanged();}
+ if(innerWidth<=760&&!picker.wasMapView)setMobileView(false);
+ if(picker.previousDetail&&BYID.has(picker.previousDetail))openDetail(picker.previousDetail);
+ if(accept){
+  $('#edit-lat').value=point.lat.toFixed(6);$('#edit-lon').value=point.lon.toFixed(6);
+  $('#edit-maps').value='';
+  $('#coord-hint').textContent='Punto selezionato sulla mappa. Il collegamento Google Maps sarà generato automaticamente; la posizione non è verificata.';
+ }
+ $('#place-editor').showModal();
+ $('#edit-map-picker').focus({preventScroll:true});
+}
+
 function openPlaceEditor(mode,id=null){
  editMode=mode;editTarget=id;
  const form=$('#place-editor-form');form.reset();
  $('#edit-title').textContent=mode==='new'?'Aggiungi un luogo':'Segnala una posizione corretta';
  $('#new-place-fields').hidden=mode!=='new';
  $('#edit-maps').value='';$('#edit-lat').value='';$('#edit-lon').value='';
- $('#coord-hint').textContent='Incolla un link Google Maps con coordinate. I link abbreviati richiedono coordinate inserite a mano.';
+ $('#coord-hint').textContent='Scegli un punto sulla mappa oppure usa un link Google Maps. Le coordinate possono essere inserite anche a mano.';
  $('#edit-state').textContent='';
  if(mode==='new'){
   $('#edit-region').value=state.region||'';
@@ -496,15 +560,15 @@ function openPlaceEditor(mode,id=null){
  }
  $('#edit-current-place').hidden=mode==='new';
  $('#place-editor').showModal();
- $('#edit-maps').focus();
+ $('#edit-map-picker').focus();
 }
 function refreshCoordinateHint(){
  const link=$('#edit-maps').value.trim(),result=mapsCoordinateHint(link);
  if(result&&franceCoordinates(result.lat,result.lon)){
   $('#edit-lat').value=String(result.lat);$('#edit-lon').value=String(result.lon);
-  $('#coord-hint').textContent=result.camera?'Coordinate del centro della mappa: verifica che corrispondano davvero al luogo prima di salvare.':'Coordinate ricavate dal link Google Maps. Verifica il punto sulla mappa prima di salvare.';
+  $('#coord-hint').textContent=result.camera?'Coordinate del centro della mappa: verifica che corrispondano davvero al luogo prima di salvare.':'Coordinate ricavate dal link Google Maps. Verifica il punto prima di salvare.';
  }else if(link){
-  $('#coord-hint').textContent=gmapsURL(link)?'Il link non contiene coordinate leggibili (frequente nei link maps.app.goo.gl). Aprilo su Google Maps e compila latitudine e longitudine.':'Il link deve essere un URL HTTPS di Google Maps.';
+  $('#coord-hint').textContent=gmapsURL(link)?'Il link non contiene coordinate leggibili: seleziona il punto sulla mappa oppure compila latitudine e longitudine.':'Il link deve essere un URL HTTPS di Google Maps. Puoi anche lasciarlo vuoto e scegliere il punto sulla mappa.';
  }
 }
 function updateSelectOptions(){
@@ -520,7 +584,7 @@ function communityPlaceFromRow(row){
  return {id:'user-'+row.id,name:row.name,region:row.region,guideZone:row.region,guideSection:'Luogo aggiunto dagli utenti',category:row.category,
   description:row.description||'',excerpt:row.description||'',rawCategory:'',sources:[],guideLinks:[],guideTexts:[],
   importance:{level:1,label:'In catalogo'},lat:Number(row.lat),lon:Number(row.lon),coordinateRole:'sito',verification:'segnalata',
-  geoSource:row.maps_url,geoSourceName:'Google Maps (inserito da un utente)',geoChecked:row.created_at,
+  geoSource:row.maps_url,geoSourceName:isAtlasPinURL(row.maps_url)?'Puntina collocata sulla mappa dell’atlante':'Google Maps (inserito da un utente)',geoChecked:row.created_at,
   createdBy:row.created_by,communityPlace:true};
 }
 function mergeCommunityData(){
@@ -532,7 +596,7 @@ function mergeCommunityData(){
  for(const correction of community.corrections){
   const p=dictionary.get(correction.place_id);if(!p)continue;
   p.lat=Number(correction.lat);p.lon=Number(correction.lon);p.coordinateRole='sito';p.verification='segnalata';
-  p.geoSource=correction.maps_url;p.geoSourceName='Segnalazione da Google Maps';p.geoChecked=correction.created_at;
+  p.geoSource=correction.maps_url;p.geoSourceName=isAtlasPinURL(correction.maps_url)?'Puntina collocata sulla mappa dell’atlante':'Segnalazione da Google Maps';p.geoChecked=correction.created_at;
   p.latestCorrection=correction;
  }
  PLACES.splice(0,PLACES.length,...merged);BYID.clear();SEARCH.clear();NAME_SEARCH.clear();
@@ -549,13 +613,13 @@ function mergeCommunityData(){
 async function updateCommunity(){try{await community.refresh();}catch(e){$('#community-state').textContent=community.error||String(e.message);}}
 async function submitPlaceEditor(event){
  event.preventDefault();if(editorBusy)return;
- const url=gmapsURL($('#edit-maps').value),lat=Number($('#edit-lat').value.trim()),lon=Number($('#edit-lon').value.trim());
+ const inputLink=$('#edit-maps').value.trim(),lat=Number($('#edit-lat').value.trim()),lon=Number($('#edit-lon').value.trim());
  const status=$('#edit-state');
- if(!url){status.textContent='Inserisci un link Google Maps HTTPS valido.';return;}
+ if(inputLink&&!gmapsURL(inputLink)){status.textContent='Il link Google Maps non è valido: correggilo o lascialo vuoto per usare la puntina.';return;}
  if(!$('#edit-lat').value.trim()||!$('#edit-lon').value.trim()||!franceCoordinates(lat,lon)){
-  status.textContent='Latitudine e longitudine obbligatorie, relative alla Francia metropolitana.';return;
+  status.textContent='Seleziona un punto sulla mappa oppure inserisci coordinate valide della Francia metropolitana.';return;
  }
- const record={maps_url:url,lat,lon};
+ const record={maps_url:inputLink?gmapsURL(inputLink):atlasPinURL(lat,lon),lat,lon};
  if(editMode==='new'){
   record.name=$('#edit-name').value.trim();record.region=$('#edit-region').value.trim();record.category=$('#edit-category').value;
   record.description=$('#edit-description').value.trim();
@@ -592,6 +656,10 @@ function setupCommunityUI(){
  $('#hidden-btn').onclick=()=>{renderHidden();$('#hidden-dialog').showModal();};
  $('#edit-maps').addEventListener('change',refreshCoordinateHint);
  $('#edit-maps').addEventListener('paste',()=>setTimeout(refreshCoordinateHint,0));
+ $('#edit-map-picker').onclick=beginLocationPicker;
+ $('#location-pick-cancel').onclick=()=>finishLocationPicker(false);
+ $('#location-pick-confirm').onclick=()=>finishLocationPicker(true);
+ document.addEventListener('keydown',e=>{if(locationPicker&&e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();finishLocationPicker(false);}},true);
  $('#place-editor-form').addEventListener('submit',submitPlaceEditor);
  community.subscribe(()=>{if(community.ready)mergeCommunityData();});
  updateCommunity();
